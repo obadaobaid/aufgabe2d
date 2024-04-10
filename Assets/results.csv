@@ -1,6 +1,6 @@
 SOA,is_probe_left,response,fixation
--100,0
--50,0
+-100,0,Probe,0.3307365
+-50,0,Reference,0.3175955
 -16.6,0
 0,0
 16.6,0

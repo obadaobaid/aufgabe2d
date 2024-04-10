@@ -7,6 +7,7 @@ TagManager:
   - right_box
   - left_box
   - cube
+  - Probe
   layers:
   - Default
   - TransparentFX

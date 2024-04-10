@@ -1,239 +1,155 @@
 using System.Collections;
-using System.Collections.Generic;
+using DG.Tweening;
 using UnityEngine;
-using System.IO;
 
 public class GameManager : MonoBehaviour
 {
+
     #region Variables and references
-    public GameObject left_box, right_box, cube; // Assign these in the Inspector
-    public Material highlightMaterial;
-    private Vector3 cubeStartPosition;
-    public GameObject userChoice;
-    private List<TrialData> trials = new List<TrialData>();
-    private string originalFilePath = "trials.csv";
-    private string copyFilePath = "results.csv";
-    private bool selectionMade = false; // Flag to check if a selection has been made
+    [SerializeField] GameObject leftBox, rightBox, draggableCube;
+    [SerializeField] Material highlightMaterial;
+    private Vector3 draggableCubeStartPosition;
+    private GameObject userChoiceCube;
+    [SerializeField] GameObject finishPnl; 
+  
+    private bool IsSelectionMade = false; 
+    private const string PROBE_TAG = "Probe";
     #endregion
+    // start method to initialize draggable cube position and start running trials coroutine
     void Start()
-    {
-        originalFilePath = Path.Combine(Application.dataPath, originalFilePath);
-        copyFilePath = Path.Combine(Application.dataPath, copyFilePath);
-        cubeStartPosition = cube.transform.position;
-        FetchCSV_Data(originalFilePath);
-        CreateCopyWithResponsesColumn(copyFilePath);
+    { 
+        draggableCubeStartPosition = draggableCube.transform.position;
+       
         StartCoroutine(RunTrials());
     }
+    // coroutine to run through trials, highlight object based on the data from CSV-File "trails.csv", then wait for user input, and record user choices in the trial data called "results.csv"
     IEnumerator RunTrials()
     {
-        foreach (var trial in trials)
+       foreach(var trial in FileHandler.trials)
         {
             float soaInSeconds = trial.SOA / 100f;
-            selectionMade = false; // Reset the flag at the start of each trial
-            GameObject objectToHighlight = trial.isProbeLeft ? left_box : right_box;  // StartCoroutine(HighlightObject(objectToHighlight)); it should be deleted
-            GameObject referenceBox = trial.isProbeLeft ? right_box : left_box;
-            //if useranswer == trial.isproveleft :
-              //      writw in DATA referce
-                //else BinaryWriter probe 
-            Renderer objRenderer = objectToHighlight.GetComponent<Renderer>();
+            IsSelectionMade = false;
+            GameObject probeBox = trial.isProbeLeft ? leftBox : rightBox;
+            GameObject referenceBox = trial.isProbeLeft ? rightBox : leftBox;
+
+            Renderer objRenderer = probeBox.GetComponent<Renderer>();
             Material originalMaterial = objRenderer.material;
 
 
-            StartCoroutine(HighlightObject(objectToHighlight, highlightMaterial));
-            
+            StartCoroutine(HighlightObject(probeBox, highlightMaterial));
 
-            yield return new WaitForSeconds(trial.Fixation); // Wait for highlight duration
-            // Make the object disappear for half a second and then reappear
+
+            yield return new WaitForSeconds(trial.Fixation);
             if (soaInSeconds < 0)
             {
-                Debug.Log("soaInSeconds<0");
-                yield return StartCoroutine(ToggleObjectVisibility(objectToHighlight, 0.0333f * 2));
+
+                yield return StartCoroutine(ToggleBoxVisibility(probeBox, 0.0333f));
                 yield return new WaitForSeconds(soaInSeconds * -1);
-                yield return StartCoroutine(ToggleObjectVisibility(referenceBox, 0.0333f * 2));
+                yield return StartCoroutine(ToggleBoxVisibility(referenceBox, 0.0333f));
             }
             else if (soaInSeconds > 0)
             {
-                Debug.Log("soaInSeconds>0");
-                yield return StartCoroutine(ToggleObjectVisibility(referenceBox, 0.0333f * 2));
+
+                yield return StartCoroutine(ToggleBoxVisibility(referenceBox, 0.0333f));
                 yield return new WaitForSeconds(soaInSeconds);
-                yield return StartCoroutine(ToggleObjectVisibility(objectToHighlight, 0.0333f * 2));
+                yield return StartCoroutine(ToggleBoxVisibility(probeBox, 0.0333f));
 
             }
             else
             {
-                yield return StartCoroutine(ToggleObjectsVisibility(objectToHighlight, referenceBox, 0.0333f * 2));
+                yield return StartCoroutine(ToggleAllCubesVisibility( 0.0333f));
             }
-            // Wait here until selectionMade becomes true
-            Debug.Log($"here ObjectSelectedfrom GameManager, SOA, fixation: {objectToHighlight}, {soaInSeconds}, {trial.Fixation} ");
 
-            yield return new WaitUntil(() => selectionMade);
+            yield return new WaitUntil(() => IsSelectionMade);
 
-            //write responce and fixation in CSV
-            Debug.Log($"here a in loop: {userChoice}");
-            ModifyCopyFile(copyFilePath, trial, userChoice);
-            // Logic to process the selection
-            
-            cube.transform.position = cubeStartPosition;
-            objRenderer.material = originalMaterial;
+            string userChoice = GetUserChoice(userChoiceCube);
 
+            ResetValues( objRenderer, originalMaterial);
 
-
+            FileHandler.ModifyCopyFile(trial, userChoice);
 
         }
-        // Handle all trials completed here
+        finishPnl.SetActive(true);
+        ScaleUpUIPanel(finishPnl.GetComponent<RectTransform>(), 0.75f, 1);
     }
 
-    
+    // reset the position of the cube and the material of the boxes after each trial
+    private void ResetValues( Renderer highlightedObjectMat, Material originalMaterial)
+    {
+        draggableCube.transform.position = draggableCubeStartPosition;
+        highlightedObjectMat.material = originalMaterial;
+        rightBox.tag = "Untagged";
+        leftBox.tag = "Untagged";
+    }
 
+    // Get user choice (Probe or Reference) based on selected object's tag
+    private string GetUserChoice(GameObject ChoosenObject)
+    {
+        string userChoice;
+        if (ChoosenObject.tag == PROBE_TAG)
+            userChoice = "Probe";
+        else
+            userChoice = "Reference";
+        return userChoice;
+    }
 
-    // This method is now called directly from DraggableObject when a selection is made
+    // Register user's selection of an object, the method should be called from the script "DraggableCube"
     public void RegisterUserSelection(GameObject selectedObject)
     {
-        // Logic to determine if the selected object is the correct one
-        //Debug.Log($"Selected object: {selectedObject.name}");
-        // Implement logic to check if the selected object matches the expected answer
-        // Then process the result and prepare for the next trial as necessary
-        userChoice = selectedObject;
-        Debug.Log($"here a, selectedObject.name: {userChoice},{selectedObject}");
-        selectionMade = true; // Indicate that a selection has been made to continue the trials
+        userChoiceCube = selectedObject;
+        IsSelectionMade = true;
     }
 
-    // New method to toggle object visibility
-    IEnumerator ToggleObjectVisibility(GameObject obj, float delay)
+    // this Coroutine to toggle the visibility of a box with a delay 
+    IEnumerator ToggleBoxVisibility(GameObject box, float delay)
     {
-        obj.SetActive(false);
+        box.SetActive(false);
         yield return new WaitForSeconds(delay);
-        obj.SetActive(true);
-
+        box.SetActive(true);
     }
-    IEnumerator ToggleObjectsVisibility(GameObject obj1, GameObject obj2, float delay)
+
+    // this Coroutine to toggle the visibility of both boxes with a delay 
+    IEnumerator ToggleAllCubesVisibility( float delay)
     {
-        obj1.SetActive(false);
-        obj2.SetActive(false);
+        rightBox.SetActive(false);
+        leftBox.SetActive(false);
         yield return new WaitForSeconds(delay);
-        obj1.SetActive(true);
-        obj2.SetActive(true);
+        rightBox.SetActive(true);
+        leftBox.SetActive(true);
 
     }
 
+    // this coroutine to highlight an object with a specified material "green color"
     IEnumerator HighlightObject(GameObject obj, Material highlightMaterial)
-{
+    {
         Renderer objRenderer = obj.GetComponent<Renderer>();
         objRenderer.material = highlightMaterial;
-         yield return new WaitForSeconds(0.1f); 
-
-
+        obj.tag = PROBE_TAG;
+        yield return new WaitForSeconds(0.1f);
     }
 
-
-
-
-    void FetchCSV_Data(string filePath)
-        {
-            //Debug.Log("here read CSV.");
-
-        try
-        {
-            string[] lines = File.ReadAllLines(filePath);
-            for (int i = 1; i < lines.Length; i++) // Start at 1 to skip the header row
-            {
-                string[] columns = lines[i].Split(',');
-                if (columns.Length == 2)
-                {
-                    float soa = float.Parse(columns[0]);
-                    bool isProbeLeft = columns[1] == "1";
-                    trials.Add(new TrialData(soa, isProbeLeft));
-                }
-            }
-        }
-        catch (System.Exception e)
-        {
-            Debug.LogError($"Error reading CSV file: {e.Message}");
-        }
-    }
-
-    void CreateCopyWithResponsesColumn(string copyFilePath)
+    // Method to scale up a UI panel with specified duration and scale multiplier
+    public void ScaleUpUIPanel(RectTransform panel, float duration, float scaleMultiplier)
     {
-        Debug.Log("here copy CSV.");
-
-        try
-        {
-            string[] lines = File.ReadAllLines(originalFilePath);
-            using (StreamWriter sw = new StreamWriter(copyFilePath))
-            {
-                // Write header with an extra 'response' column
-                sw.WriteLine($"{lines[0]},response,fixation");
-
-                // Write the rest of the lines as is, but with an extra comma for the new column
-                for (int i = 1; i < lines.Length; i++)
-                {
-                    sw.WriteLine($"{lines[i]}");
-                }
-            }
-        }
-        catch (System.Exception e)
-        {
-            Debug.LogError($"Error creating copy of CSV file: {e.Message}");
-        }
+        panel.localScale = Vector3.zero;
+        panel.DOScale(1, duration).SetEase(Ease.InOutElastic);
     }
-    void ModifyCopyFile(string filePath, TrialData trial , GameObject objectToHighlights)
-    {
-        try
-        {
-            // Die kopierte Datei öffnen und die erforderlichen Änderungen vornehmen
-            List<string> lines = new List<string>(File.ReadAllLines(filePath));
-
-            // Index der aktuellen Zeile bestimmen
-            int currentIndex = trials.IndexOf(trial) + 1; // Zeilenindex beginnt bei 1, da die erste Zeile die Headerzeile ist
-
-            // Die entsprechende Zeile finden und aktualisieren
-            if (currentIndex < lines.Count)
-            {
-                // Die 'response' und 'fixation' Spaltenwerte für die aktuelle Zeile festlegen
-                string responseValue = trial.isProbeLeft ? "left" : "right"; // Beispielwert für 'response'
-                string fixationValue = trial.Fixation.ToString(); // Fixationswert
-
-                // Die aktuelle Zeile aktualisieren, indem die 'response' und 'fixation' Werte hinzugefügt werden
-                string updatedLine = $"{lines[currentIndex]},{objectToHighlights.name},{fixationValue}";
-
-                // Die aktualisierte Zeile in die Liste einfügen
-                lines[currentIndex] = updatedLine;
-
-                // Die aktualisierten Zeilen in die Datei schreiben
-                File.WriteAllLines(filePath, lines.ToArray());
-            }
-            else
-            {
-                Debug.LogError("Error: Current trial index exceeds the number of lines in the copied file.");
-            }
-        }
-        catch (System.Exception e)
-        {
-            Debug.LogError($"Error modifying copy of CSV file: {e.Message}");
-        }
-    }
-
-    // Define a structure to hold the trial data
-    public struct TrialData
-    {
-        public float SOA;
-        public bool isProbeLeft;
-        public float Fixation;
-
-        public TrialData(float soa, bool isProbeLeft, float fixation)
-        {
-            this.SOA = soa;
-            this.isProbeLeft = isProbeLeft;
-            this.Fixation = fixation;
-        }
-        public TrialData(float soa, bool isProbeLeft) : this(soa, isProbeLeft, Random.Range(0.3f, 0.5f))
-        {
-        }
-    }
-    
-
 }
+public struct TrialData
+{
+    public float SOA;
+    public bool isProbeLeft;
+    public float Fixation;
 
-
+    public TrialData(float soa, bool isProbeLeft, float fixation)
+    {
+        this.SOA = soa;
+        this.isProbeLeft = isProbeLeft;
+        this.Fixation = fixation;
+    }
+    public TrialData(float soa, bool isProbeLeft) : this(soa, isProbeLeft, Random.Range(0.3f, 0.5f))
+    {
+    }
+}
 
 
